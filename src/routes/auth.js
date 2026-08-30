@@ -1,35 +1,29 @@
 import express from 'express';
-import bcrypt from 'bcrypt';
-// import jwt from 'jwt-simple'; // Note: using jsonwebtoken below
-import pkg from 'jsonwebtoken';
-const { sign, verify } = pkg;
 import { supabase } from '../lib/supabase.js';
 import { requireAuth } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
-// Secret keys from environment variables
-const JWT_SECRET = process.env.JWT_SECRET || 'super-long-random';
-
 // POST /api/auth/register
 router.post('/register', async (req, res) => {
   try {
-    const { email, password, name } = req.body;
+    const { email, password, display_name } = req.body;
 
-    // 1. Hash the password
-    const saltRounds = 10;
-    const passwordHash = await bcrypt.hash(password, saltRounds);
-
-    // 2. Insert user into the database (using Supabase service client)
-    const { data: user, error } = await supabase
-      .from('users')
-      .insert([{ email, name, password_hash: passwordHash }])
-      .select('id, email, name')
-      .single();
+    // Using Supabase Auth to create the user
+    // The database trigger will automatically create the public.profiles row
+    const { data, error } = await supabase.auth.signUp({
+      email: email,
+      password: password,
+      options: {
+        data: {
+          name: display_name // This gets passed to raw_user_meta_data to populate the profile
+        }
+      }
+    });
 
     if (error) throw error;
 
-    res.status(201).json({ message: 'User registered successfully', user });
+    res.status(201).json({ message: 'User registered successfully', data });
   } catch (error) {
     res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
   }
@@ -40,35 +34,42 @@ router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // 1. Find user
-    const { data: user, error } = await supabase
-      .from('users')
-      .select('id, email, password_hash, name')
-      .eq('email', email)
-      .single();
-
-    if (error || !user) {
-      return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Invalid credentials' } });
+    if (!email || !password) {
+      return res.status(400).json({
+        error: { code: 'BAD_REQUEST', message: 'Email and password are required' }
+      });
     }
 
-    // 2. Verify password
-    const isValid = await bcrypt.compare(password, user.password_hash);
-    if (!isValid) {
-      return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Invalid credentials' } });
+    // Authenticate with Supabase Auth
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password
+    });
+
+    if (error || !data.session) {
+      return res.status(401).json({
+        error: { code: 'UNAUTHORIZED', message: error?.message || 'Invalid credentials' }
+      });
     }
 
-    // 3. Generate JWT (short-lived access token)
-    const token = sign({ userId: user.id }, JWT_SECRET, { expiresIn: '15m' });
+    const { session, user } = data;
 
-    // 4. Set httpOnly cookie
-    res.cookie('accessToken', token, {
+    // Set httpOnly cookie
+    res.cookie('accessToken', session.access_token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
       maxAge: 15 * 60 * 1000 // 15 minutes
     });
 
-    res.json({ message: 'Logged in successfully', user: { id: user.id, email: user.email, name: user.name } });
+   res.json({
+      message: 'Logged in successfully',
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.user_metadata?.name || user.user_metadata?.display_name || ''
+      }
+    });
   } catch (error) {
     res.status(500).json({ error: { code: 'INTERNAL_SERVER_ERROR', message: error.message } });
   }
@@ -118,8 +119,8 @@ router.get('/me', requireAuth, async (req, res) => {
   try {
     // req.user.userId comes from the verified JWT payload
     const { data: user, error } = await supabase
-      .from('users')
-      .select('id, email, name, image_url')
+      .from('profiles')
+      .select('id, email, display_name, avatar_url')
       .eq('id', req.user.userId)
       .single();
 

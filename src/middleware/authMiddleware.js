@@ -1,8 +1,6 @@
-import jwt from 'jsonwebtoken';
+import  { supabase } from '../lib/supabase.js'
 
-const JWT_SECRET = process.env.JWT_SECRET || 'super-long-random';
-
-export const requireAuth = (req, res, next) => {
+export const requireAuth = async (req, res, next) => {
   // 1. Extract the token from the httpOnly cookie
   const token = req.cookies.accessToken;
 
@@ -13,19 +11,25 @@ export const requireAuth = (req, res, next) => {
     });
   }
 
-  // 3. Verify the token signature and expiration
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    
-    // Attach the decoded payload (e.g., { userId: '...' }) to the request object
-    req.user = decoded; 
-    
-    // Pass control to the next middleware or route handler
-    next();
-  } catch (error) {
-    // Return the exact error format specified in your project requirements
+    // getUser() automatically verifies the RS256 signature and expiration
+  const { data: { user }, error } = await supabase.auth.getUser(token);
+
+  if (error || !user) {
     return res.status(403).json({ 
       error: { code: 'FORBIDDEN', message: 'Invalid or expired token' } 
     });
   }
+
+  // Attach the user object to the request
+  req.user = { userId: user.id, ...user }; 
+  
+  next();
+  } catch (error) {
+    return res.status(500).json({ 
+      error: { code: 'INTERNAL_SERVER_ERROR', message: error.message || 'Server error during authentication' } 
+    });
+  }
+  
+
 };

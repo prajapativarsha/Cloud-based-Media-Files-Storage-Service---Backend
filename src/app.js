@@ -4,6 +4,9 @@ import dotenv from 'dotenv';
 import { supabase } from './lib/supabase.js';
 import cookieParser from 'cookie-parser';
 import authRoutes from './routes/auth.js';
+import fileRoutes from './routes/files.js';
+import folderRoutes from './routes/folders.js';
+import trashRoutes from './routes/trash.js';
 
 dotenv.config();
 
@@ -14,6 +17,9 @@ app.use(express.json());
 app.use(cookieParser());
 
 app.use('/api/auth', authRoutes);
+app.use('/api/files', fileRoutes);
+app.use('/api/folders', folderRoutes);
+app.use('/api/trash', trashRoutes);
 
 // Health check and DB verification route
 app.get('/health', async (req, res) => {
