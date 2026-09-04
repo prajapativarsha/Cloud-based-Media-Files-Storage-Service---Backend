@@ -103,7 +103,7 @@ router.post('/', requireAuth, async (req, res) => {
 router.get('/shared-with-me', requireAuth, async (req, res) => {
   try {
     const userId = req.user.userId;
-
+  
     const { data: shares, error } = await supabase
       .from('shares')
       .select('*')

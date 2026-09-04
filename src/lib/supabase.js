@@ -1,5 +1,5 @@
-import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
+import { createClient } from '@supabase/supabase-js';
 
 dotenv.config();
 
@@ -7,4 +7,9 @@ const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 // Export the service client to be used for server-side operations
-export const supabase = createClient(supabaseUrl, supabaseServiceKey);
+export const supabase = createClient(supabaseUrl, supabaseServiceKey , {
+  auth: {
+    persistSession: false,
+    autoRefreshToken: false,
+  },
+});
